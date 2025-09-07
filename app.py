@@ -130,7 +130,7 @@ app = FastAPI(title="DDNS API (FastAPI)")
 async def healthz():
     return {"ok": True}
 
-@app.post("/ddns")
+@app.post("/api")
 async def ddns_update(body: DdnsBody):
     # 校验 IPv6
     try:
