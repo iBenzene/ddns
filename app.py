@@ -1,9 +1,10 @@
+
 import os
 import json
 import ipaddress
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -12,20 +13,22 @@ from alibabacloud_alidns20150109.client import Client as DnsClient
 from alibabacloud_alidns20150109 import models as dns_models
 from alibabacloud_tea_openapi import models as open_api_models
 
-load_dotenv()  # 默认加载根目录下的 .env 文件
-# load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env.local")) # 本地调试时使用
+# load_dotenv()  # 默认加载根目录下的 .env 文件
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env.local")) # 本地调试时使用
 
 ALIYUN_AK = os.getenv("ALIYUN_ACCESS_KEY_ID")
 ALIYUN_SK = os.getenv("ALIYUN_ACCESS_KEY_SECRET")
 ALIYUN_REGION = os.getenv("ALIYUN_REGION_ID", "cn-hangzhou")
 ALIYUN_DOMAIN = os.getenv("ALIYUN_DOMAIN")
 ALIYUN_TTL = int(os.getenv("ALIYUN_TTL", "600"))
-PORT = int(os.getenv("PORT", "3000"))
+
+API_PORT = int(os.getenv("API_PORT", "3000"))
+API_TOKEN = os.getenv("API_TOKEN")
 
 DDNS_RECORDS_ENV = os.getenv("DDNS_RECORDS")
 
-if not (ALIYUN_AK and ALIYUN_SK and ALIYUN_DOMAIN and DDNS_RECORDS_ENV):
-    raise RuntimeError("Missing required envs: ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET / ALIYUN_DOMAIN / DDNS_RECORDS")
+if not (ALIYUN_AK and ALIYUN_SK and ALIYUN_DOMAIN and DDNS_RECORDS_ENV and API_TOKEN):
+    raise RuntimeError("Missing required envs: ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET / ALIYUN_DOMAIN / DDNS_RECORDS / API_TOKEN")
 
 try:
     DDNS_RECORDS: List[Dict[str, str]] = json.loads(DDNS_RECORDS_ENV)
@@ -131,7 +134,11 @@ async def healthz():
     return {"ok": True}
 
 @app.post("/api")
-async def ddns_update(body: DdnsBody):
+async def ddns_update(request: Request, body: DdnsBody):
+    # 校验访问令牌
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer ") or auth[7:] != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing token")
     # 校验 IPv6
     try:
         addr = ipaddress.IPv6Address(body.ipv6)
@@ -164,4 +171,4 @@ async def ddns_update(body: DdnsBody):
 # 便于 Uvicorn 直接启动: python app.py
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=PORT, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=API_PORT, reload=False)
